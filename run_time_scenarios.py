@@ -28,7 +28,7 @@ def run_one_scenario(scenario: str):
         
     print(f"\n[Step 1] {scenario}")
     run_step1(
-        time_limit_sec=1800,
+        time_limit_sec=3600,
         N_EVENTS=None,
         stop_after_first_solution=True,
         scenario=scenario,

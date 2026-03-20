@@ -34,9 +34,7 @@ NUM_SLOTS = len(SLOT_START_HOURS)
 NO_ROOM_FLAG = "No room required"
 
 # We treat "NHS Room" as "General Teaching"
-ROOMTYPE_MAP = {
-    "NHS Room": "General Teaching",
-}
+ROOMTYPE_MAP = {}
 
 def norm_room_type(x) -> str:
     """

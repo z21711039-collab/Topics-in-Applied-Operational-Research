@@ -15,7 +15,11 @@ from typing import Set, Tuple, Dict, List
 
 # ====== FILE PATHS (edit if needed) ======
 ROOMS_XLSX = "room.xlsx"
-SOLUTION_CSV = "step2_solution_with_rooms_by_week.csv"  # <- your step2 by-week output
+SOLUTION_CSVS = [
+    "step2_solution_with_rooms_by_week_baseline.csv",
+    "step2_solution_with_rooms_by_week_mon_fri_9_5.csv",
+    "step2_solution_with_rooms_by_week_no_friday_afternoon.csv",
+]
 # If your file name is different, just change SOLUTION_CSV
 # ========================================
 
@@ -47,8 +51,11 @@ def norm_room_type(x) -> str:
         return NO_ROOM_FLAG
     return ROOMTYPE_MAP.get(s, s)
 
-def main():
-    sol_path = Path(SOLUTION_CSV)
+def main(solution_csv):
+    sol_path = Path(solution_csv)
+    print("\n" + "=" * 80)
+    print(f"Checking: {solution_csv}")
+    print("=" * 80)
     if not sol_path.exists():
         raise FileNotFoundError(f"Cannot find SOLUTION_CSV: {sol_path}")
 
@@ -264,4 +271,5 @@ def main():
     print("FAILED (see counts above)" if failed else "PASSED (all hard checks satisfied)")
 
 if __name__ == "__main__":
-    main()
+    for f in SOLUTION_CSVS:
+        main(f)

@@ -31,16 +31,14 @@ NUM_SLOTS = len(SLOT_START_HOURS)      # 9
 NO_ROOM_FLAG = "No room required"
 
 
-# We treat NHS Room as General Teaching
-ROOMTYPE_MAP = {
-    "NHS Room": "General Teaching",
-}
+
+ROOMTYPE_MAP = {}
 
 def norm_room_type(x) -> str:
     """
-    [EN] Normalize room type:
-       map empty/NaN/None/null to NO_ROOM_FLAG
-       otherwise, we map via ROOMTYPE_MAP
+    Normalize room type:
+    map empty/NaN/None/null to NO_ROOM_FLAG
+    otherwise, we map via ROOMTYPE_MAP
     """
     if pd.isna(x):
         return NO_ROOM_FLAG
@@ -102,6 +100,7 @@ def main(time_limit_sec: int = 900, N_EVENTS: int | None = 2000,
          stop_after_first_solution: bool = True,
          scenario: str = "baseline", events_xlsx=EVENTS_XLSX):
     ev = pd.read_excel(events_xlsx).copy()
+    
     rm = pd.read_excel(ROOMS_XLSX).copy()
 
     # Clean rooms
@@ -129,6 +128,8 @@ def main(time_limit_sec: int = 900, N_EVENTS: int | None = 2000,
         "Room type 2": "req_room_type",
         "Weeks": "weeks_raw",
     })
+    #先只跑前两周，跑全量的话把下面这行删掉就行
+    #ev["weeks_raw"] = ev["weeks_raw"].apply(lambda x: ",".join(str(x).split(",")[:2]))
     ev["weeks_set"] = ev["weeks_raw"].apply(parse_weeks)
     ev["whole_class"] = ev["WholeClass"].astype(str).str.strip().str.upper()
 

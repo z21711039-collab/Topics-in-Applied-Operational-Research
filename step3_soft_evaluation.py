@@ -21,9 +21,7 @@ HOUR2SLOT = {h: i for i, h in enumerate(range(9, 18))}  # 9点~17点 -> 0~8
 
 NO_ROOM_FLAG = "No room required"
 
-ROOMTYPE_MAP = {
-    "NHS Room": "General Teaching",
-}
+ROOMTYPE_MAP = {}
 
 
 def norm_room_type(x):
@@ -443,13 +441,13 @@ def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv"):
     print("student clash 明细文件:", OUTPUT_CLASH_DETAIL_CSV)
 
     # ===== objective =====
-    w_clash = 1000
-    w_evening = 10
-    w_wed = 8
-    w_lunch = 5
-    w_same_room = 2
-    w_capacity = 500
-    w_campus = 20
+    w_clash = 250
+    w_capacity = 100
+    w_evening = 40
+    w_wed = 30
+    w_lunch = 20
+    w_campus = 10
+    w_same_room = 3
 
     clash_contrib = w_clash * clash_penalty
     evening_contrib = w_evening * evening_penalty
