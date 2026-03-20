@@ -74,13 +74,18 @@ def run_one_scenario(scenario: str):
 
     # Step 3
     print(f"\n[Step 3] {scenario}")
-    run_step3(
+    summary = run_step3(
         step2_csv=step2_file,
         events_xlsx=events_file,
-        overlap_csv=overlap_file
+        overlap_csv=overlap_file,
+        scenario=scenario
     )
 
+    return summary
+
 def main():
+    all_results = []
+
     try:
         prepare_all_inputs()
     except Exception as e:
@@ -90,10 +95,36 @@ def main():
 
     for scenario in SCENARIOS:
         try:
-            run_one_scenario(scenario)
+            summary = run_one_scenario(scenario)
+            if summary is not None:
+                summary["scenario"] = scenario
+                all_results.append(summary)
         except Exception as e:
             print(f"\nScenario {scenario} failed.")
             print("Reason:", e)
 
-if __name__ == "__main__":
-    main()
+    if all_results:
+        import pandas as pd
+
+        result_df = pd.DataFrame(all_results)[[
+            "scenario",
+            "objective",
+            "clash_count",
+            "evening_count",
+            "wed_count",
+            "lunch_count",
+            "cap_bad_count",
+            "campus_bad_count",
+            "peak_day",
+            "peak_hour",
+            "peak_events",
+            "avg_room_utilisation",
+        ]]
+
+        print("\n" + "=" * 100)
+        print("SCENARIO SUMMARY")
+        print("=" * 100)
+        print(result_df.to_string(index=False))
+
+        result_df.to_csv("scenario_summary.csv", index=False)
+        print("\nSaved summary file: scenario_summary.csv")

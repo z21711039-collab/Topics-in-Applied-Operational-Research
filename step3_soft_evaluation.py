@@ -327,10 +327,68 @@ def 百分比(part, whole):
         return 0.0
     return 100.0 * part / whole
 
+
+
+def 计算_utilisation指标(sol, scenario):
+    # ===== 1) timeslot usage =====
+    ts_usage = sol.groupby(["assigned_day", "assigned_start_hour"]).size().reset_index(name="count")
+    peak = ts_usage.loc[ts_usage["count"].idxmax()]
+
+    used_timeslots = len(ts_usage)
+    avg_events_per_used_timeslot = ts_usage["count"].mean() if len(ts_usage) > 0 else 0
+
+    # scenario-specific available timeslots
+    if scenario == "mon_fri_9_5":
+        available_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        available_hours = [9, 10, 11, 12, 13, 14, 15, 16]   # 9-5 => start at 9..16
+        total_available_timeslots = len(available_days) * len(available_hours)
+
+    elif scenario == "no_friday_afternoon":
+        # Mon-Thu: 9..17 ; Fri: 9..11
+        total_available_timeslots = 4 * 9 + 3   # 36 + 3 = 39
+
+    else:  # baseline
+        # Mon, Tue, Thu, Fri: 9..17 ; Wed: 9..17
+        # 这里先按你模型当前允许的统一 9..17 算，共45个
+        total_available_timeslots = 5 * 9
+
+    timeslot_utilisation = (
+        used_timeslots / total_available_timeslots
+        if total_available_timeslots > 0 else 0
+    )
+
+    # ===== 2) room usage =====
+    room_only = sol[
+        sol["room_id"].notna() & (sol["room_id"].astype(str).str.strip() != "")
+    ].copy()
+
+    total_rooms = room_only["room_id"].nunique()
+
+    room_usage = room_only.groupby(
+        ["assigned_day", "assigned_start_hour"]
+    )["room_id"].nunique().reset_index(name="rooms_used")
+
+    room_usage["utilisation"] = room_usage["rooms_used"] / total_rooms if total_rooms > 0 else 0
+    avg_room_utilisation = room_usage["utilisation"].mean() if len(room_usage) > 0 else 0
+
+    return {
+        "peak_day": peak["assigned_day"],
+        "peak_hour": int(peak["assigned_start_hour"]),
+        "peak_events": int(peak["count"]),
+        "used_timeslots": int(used_timeslots),
+        "total_available_timeslots": int(total_available_timeslots),
+        "timeslot_utilisation": round(float(timeslot_utilisation), 2),
+        "avg_events_per_used_timeslot": round(float(avg_events_per_used_timeslot), 2),
+        "avg_room_utilisation": round(float(avg_room_utilisation), 2),
+    }
+    
+    
+    
+    
 def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv",
          events_xlsx="events.xlsx",
-         overlap_csv="event_overlap.csv"):
-    print(">>> DEBUG: entering step3 main")
+         overlap_csv="event_overlap.csv",
+         scenario="baseline"):
     sol = 读取并整理step2课表(step2_csv)
     rm = 读取room数据()
     ev = 读取event数据(events_xlsx)
@@ -394,45 +452,43 @@ def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv",
     print("[1] Student Clash")
     print("冲突的 event pair 数量:", clash_count)
     print("占全部 overlap pair 的比例: {:.2f}%".format(百分比(clash_count, total_overlap_pairs)))
-    print("总 clash penalty:", clash_penalty)
+    print("总 clash penalty: {:.2f}".format(float(clash_penalty)))
     print()
 
     print("[2a] Core Teaching After 5pm")
     print("违反数量:", evening_count)
     print("占 whole-class occurrence 的比例: {:.2f}%".format(百分比(evening_count, total_wholeclass_occurrences)))
-    print("penalty:", evening_penalty)
+    print("penalty: {:.2f}".format(float(evening_penalty)))
     print()
 
     print("[2b] Wednesday Afternoon Whole-Class")
     print("违反数量:", wed_count)
     print("占 whole-class occurrence 的比例: {:.2f}%".format(百分比(wed_count, total_wholeclass_occurrences)))
-    print("penalty:", wed_penalty)
+    print("penalty: {:.2f}".format(float(wed_penalty)))
     print()
-    
-    print(">>> DEBUG: about to print lunch")
+
     print("[3] Lunch Break (近似版)")
     print("落在12点或13点开始的事件数:", lunch_count)
     print("占全部 occurrence 的比例: {:.2f}%".format(百分比(lunch_count, total_occurrences)))
-    print("penalty:", lunch_penalty)
+    print("penalty: {:.2f}".format(float(lunch_penalty)))
     print()
 
-    print(">>> DEBUG: about to print same room")
     print("[4] Same Room Across Weeks")
-    print("使用多个不同room的event数量:", same_room_bad_events)
+    print("使用多个不同 room 的 event 数量:", same_room_bad_events)
     print("占全部 event 的比例: {:.2f}%".format(百分比(same_room_bad_events, total_events)))
-    print("penalty:", same_room_penalty)
+    print("penalty: {:.2f}".format(float(same_room_penalty)))
     print()
 
     print("[5] Room Capacity Violation")
-    print("容量超限的occurrence数量:", cap_bad_count)
+    print("容量超限的 occurrence 数量:", cap_bad_count)
     print("占有房间 occurrence 的比例: {:.2f}%".format(百分比(cap_bad_count, total_room_occurrences)))
-    print("penalty(超出人数总和):", cap_penalty)
+    print("penalty (超出人数总和): {:.2f}".format(float(cap_penalty)))
     print()
 
     print("[6] Expected Campus Mismatch")
-    print("不符合Expected Campus的occurrence数量:", campus_bad_count)
+    print("不符合 Expected Campus 的 occurrence 数量:", campus_bad_count)
     print("占适用 occurrence 的比例: {:.2f}%".format(百分比(campus_bad_count, campus_applicable_total)))
-    print("penalty:", campus_penalty)
+    print("penalty: {:.2f}".format(float(campus_penalty)))
     print()
 
     print("student clash 明细文件:", OUTPUT_CLASH_DETAIL_CSV)
@@ -466,18 +522,83 @@ def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv",
 
     print()
     print("=== Objective Score ===")
-    print("Total objective:", objective)
+    print("Total objective: {:.2f}".format(float(objective)))
     print()
 
     print("=== Objective Contribution Breakdown ===")
-    print("Student Clash contribution:", clash_contrib, "({:.2f}%)".format(百分比(clash_contrib, objective)))
-    print("After 5pm contribution:", evening_contrib, "({:.2f}%)".format(百分比(evening_contrib, objective)))
-    print("Wednesday contribution:", wed_contrib, "({:.2f}%)".format(百分比(wed_contrib, objective)))
-    print("Lunch contribution:", lunch_contrib, "({:.2f}%)".format(百分比(lunch_contrib, objective)))
-    print("Same Room contribution:", same_room_contrib, "({:.2f}%)".format(百分比(same_room_contrib, objective)))
-    print("Capacity contribution:", capacity_contrib, "({:.2f}%)".format(百分比(capacity_contrib, objective)))
-    print("Campus contribution:", campus_contrib, "({:.2f}%)".format(百分比(campus_contrib, objective)))
+    print("Student Clash contribution: {:.2f} ({:.2f}%)".format(
+        float(clash_contrib), 百分比(clash_contrib, objective)
+    ))
+    print("After 5pm contribution: {:.2f} ({:.2f}%)".format(
+        float(evening_contrib), 百分比(evening_contrib, objective)
+    ))
+    print("Wednesday contribution: {:.2f} ({:.2f}%)".format(
+        float(wed_contrib), 百分比(wed_contrib, objective)
+    ))
+    print("Lunch contribution: {:.2f} ({:.2f}%)".format(
+        float(lunch_contrib), 百分比(lunch_contrib, objective)
+    ))
+    print("Same Room contribution: {:.2f} ({:.2f}%)".format(
+        float(same_room_contrib), 百分比(same_room_contrib, objective)
+    ))
+    print("Capacity contribution: {:.2f} ({:.2f}%)".format(
+        float(capacity_contrib), 百分比(capacity_contrib, objective)
+    ))
+    print("Campus contribution: {:.2f} ({:.2f}%)".format(
+        float(campus_contrib), 百分比(campus_contrib, objective)
+    ))
 
+
+
+    util_summary = 计算_utilisation指标(sol, scenario)
+
+    print()
+    print("=" * 60)
+    print("UTILISATION ANALYSIS")
+    print("=" * 60)
+
+    print(
+        f"Peak timeslot: {util_summary['peak_day']} at {util_summary['peak_hour']}:00 "
+        f"({util_summary['peak_events']} events)"
+    )
+
+    print("Timeslot utilisation: {:.2f}%".format(util_summary["timeslot_utilisation"] * 100))
+    print("Average events per used timeslot: {:.2f}".format(util_summary["avg_events_per_used_timeslot"]))
+    print("Average room utilisation: {:.2f}%".format(util_summary["avg_room_utilisation"] * 100))
+
+    return {
+        "objective": round(float(objective), 2),
+
+        # ===== counts =====
+        "clash_count": clash_count,
+        "evening_count": evening_count,
+        "wed_count": wed_count,
+        "lunch_count": lunch_count,
+        "same_room_bad_events": same_room_bad_events,
+        "cap_bad_count": cap_bad_count,
+        "campus_bad_count": campus_bad_count,
+
+        # ===== percentages（全部两位小数）=====
+        "clash_pct": round(百分比(clash_count, total_overlap_pairs), 2),
+        "evening_pct": round(百分比(evening_count, total_wholeclass_occurrences), 2),
+        "wed_pct": round(百分比(wed_count, total_wholeclass_occurrences), 2),
+        "lunch_pct": round(百分比(lunch_count, total_occurrences), 2),
+        "same_room_pct": round(百分比(same_room_bad_events, total_events), 2),
+        "cap_pct": round(百分比(cap_bad_count, total_room_occurrences), 2),
+        "campus_pct": round(百分比(campus_bad_count, campus_applicable_total), 2),
+
+        # ===== utilisation =====
+        "peak_day": util_summary["peak_day"],
+        "peak_hour": util_summary["peak_hour"],
+        "peak_events": util_summary["peak_events"],
+
+        "timeslot_utilisation": util_summary["timeslot_utilisation"],
+        "avg_events_per_used_timeslot": util_summary["avg_events_per_used_timeslot"],
+        "avg_room_utilisation": util_summary["avg_room_utilisation"],
+    }
+    
+    
+    
 if __name__ == "__main__":
     main()
     

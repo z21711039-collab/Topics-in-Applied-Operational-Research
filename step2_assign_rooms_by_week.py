@@ -121,77 +121,79 @@ def main(step1_sol="step1_solution_baseline.csv",
     sol["room_id"] = ""
     sol["room_campus"] = ""
 
-    # occupancy: (week, room_idx, day_idx, slot)
-    occ: Set[Tuple[int,int,int,int]] = set()
-
-    # heuristic: longer first within each type
-    def difficulty_key(r):
-        return (-int(r["L_slots"]), )
-
-    sol_sorted = sol.sort_values(by=["req_room_type"], kind="stable").copy()
-
-    # Greedy assignment for room-required occurrences
-    import heapq
 
     assigned_count = 0
     failed: List[Tuple[str, int]] = []
 
-    # Only handle the rows that require a room (no-room does not need to assign room_id).
+    # Only handle rows that require a room
     need = sol[sol["req_room_type"] != NO_ROOM_FLAG].copy()
 
-    # Interval coloring per (room_type, week, day) ensures no overlaps in the same room
+    # 全局 occupancy：按最终 room_id 检查，避免任何重复占用
+    occ: Set[Tuple[int, str, str, int]] = set()
+
+    # 仍然按 (room_type, week, day) 分组，但分配时额外用 occ 做最终校验
     for (room_type, wk, day), g in need.groupby(["req_room_type", "week", "assigned_day"], sort=False):
         room_type = str(room_type).strip()
         room_list = type_to_room_idx.get(room_type, [])
 
         if not room_list:
-            # If no rooms of this type, all occurrences in this group will fail
-            for _, rr in g.iterrows():
+            for idx, rr in g.iterrows():
                 failed.append((rr["event_id"], int(rr["week"])))
             continue
 
-        # Build intervals [start, end) in slot index
-        # Convert occurrences to slot intervals [start, end)
+        # 建 interval，优先排长课；同长度时大班优先
         intervals = []
         for idx, row in g.iterrows():
             start = HOUR2SLOT[int(row["assigned_start_hour"])]
             L = int(row["L_slots"])
             end = start + L
             size = int(row["size"])
-            intervals.append((start, end, idx, size))
-            
-        # Sort by start time
-        intervals.sort(key=lambda x: (x[0], x[1]))
+            intervals.append((start, end, -L, -size, idx, size))
 
+        intervals.sort()
 
-        free_rooms = list(room_list)  # 当前可用房间
-        busy = []  # heap of (end, room_idx)
+        for start, end, _, _, idx, size in intervals:
+            feasible_rooms = []
 
-        for start, end, idx, size in intervals:
-            while busy and busy[0][0] <= start:
-                _, r_idx = heapq.heappop(busy)
-                free_rooms.append(r_idx)
+            # 只在“同 req_room_type 的房间”里选，保证严格房型匹配
+            for r_idx in room_list:
+                rid = str(rm.at[r_idx, "room_id"])
 
-            # 第一优先：容量足够的房间
-            eligible_rooms = [r_idx for r_idx in free_rooms if int(rm.at[r_idx, "cap"]) >= size]
+                # 用最终 room_id 做全局时段冲突检查
+                has_conflict = False
+                for s in range(start, end):
+                    key = (int(wk), rid, str(day), s)
+                    if key in occ:
+                        has_conflict = True
+                        break
+
+                if not has_conflict:
+                    feasible_rooms.append(r_idx)
+
+            # 没有任何合法房间：记 failed
+            if not feasible_rooms:
+                failed.append((sol.at[idx, "event_id"], int(sol.at[idx, "week"])))
+                continue
+
+            # 容量是软约束：
+            # 先选容量够的最小房间；如果没有，就在可行房间里选容量最大的
+            eligible_rooms = [r_idx for r_idx in feasible_rooms if int(rm.at[r_idx, "cap"]) >= size]
 
             if eligible_rooms:
-                # 在容量足够的房间里，优先选最小够用的
                 r_idx = min(eligible_rooms, key=lambda r: int(rm.at[r, "cap"]))
             else:
-                # 第二优先：如果没有容量足够的房间，就从所有可用房间里选最大的
-                if not free_rooms:
-                    failed.append((sol.at[idx, "event_id"], int(sol.at[idx, "week"])))
-                    continue
+                r_idx = max(feasible_rooms, key=lambda r: int(rm.at[r, "cap"]))
 
-                r_idx = max(free_rooms, key=lambda r: int(rm.at[r, "cap"]))
+            rid = str(rm.at[r_idx, "room_id"])
 
-            # 从 free_rooms 里删掉这个房间
-            free_rooms.remove(r_idx)
-
-            sol.at[idx, "room_id"] = rm.at[r_idx, "room_id"]
+            # 写入结果
+            sol.at[idx, "room_id"] = rid
             sol.at[idx, "room_campus"] = rm.at[r_idx, "campus"]
-            heapq.heappush(busy, (end, r_idx))
+
+            # 更新全局 occupancy
+            for s in range(start, end):
+                occ.add((int(wk), rid, str(day), s))
+
             assigned_count += 1
 
     # Outputs
