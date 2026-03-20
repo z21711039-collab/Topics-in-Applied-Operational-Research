@@ -85,8 +85,7 @@ def allowed_in_scenario(day_name: str, start_hour: int, L: int, scenario: str, i
         return True
 
     elif scenario == "no_friday_afternoon":
-        # 限制所有 event（不区分 whole class）
-        if day_name == "Friday" and start_hour >= 12:
+        if day_name == "Friday" and end_hour > 12:
             return False
         return True
 
@@ -129,7 +128,7 @@ def main(time_limit_sec: int = 900, N_EVENTS: int | None = 2000,
         "Weeks": "weeks_raw",
     })
     #先只跑前两周，跑全量的话把下面这行删掉就行
-    #ev["weeks_raw"] = ev["weeks_raw"].apply(lambda x: ",".join(str(x).split(",")[:2]))
+    ev["weeks_raw"] = ev["weeks_raw"].apply(lambda x: ",".join(str(x).split(",")[:2]))
     ev["weeks_set"] = ev["weeks_raw"].apply(parse_weeks)
     ev["whole_class"] = ev["WholeClass"].astype(str).str.strip().str.upper()
 

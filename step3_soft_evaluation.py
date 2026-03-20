@@ -82,8 +82,8 @@ def 读取room数据():
     return rm
 
 
-def 读取event数据():
-    ev = pd.read_excel(EVENTS_XLSX).copy()
+def 读取event数据(events_xlsx):
+    ev = pd.read_excel(events_xlsx).copy()
     ev.columns = ev.columns.str.strip()
 
     ev = ev.rename(columns={
@@ -92,12 +92,11 @@ def 读取event数据():
         "WholeClass": "whole_class",
         "Expected Campus": "event_campus",
     })
-    
 
     ev["event_id"] = ev["event_id"].astype(str).str.strip()
     ev["size"] = pd.to_numeric(ev["size"], errors="coerce").fillna(0).astype(int)
     ev["event_campus"] = ev["event_campus"].fillna(NO_ROOM_FLAG).astype(str).str.strip()
-    
+
     if "whole_class" in ev.columns:
         ev["whole_class"] = ev["whole_class"].astype(str).str.strip().str.upper()
     else:
@@ -117,7 +116,7 @@ def clash_weight(wc1, wc2):
     else:
         return 0.3
 
-def 评估_student_clash(sol, ev):
+def 评估_student_clash(sol, ev, overlap_csv):
     whole_class_map = dict(
         zip(ev["event_id"].astype(str), ev["whole_class"].astype(str))
     )
@@ -137,7 +136,7 @@ def 评估_student_clash(sol, ev):
     detail_rows = []
     total_overlap_pairs = 0
 
-    chunks = pd.read_csv(OVERLAP_CSV, chunksize=200000)
+    chunks = pd.read_csv(overlap_csv, chunksize=200000)
 
     for chunk in chunks:
         chunk["event1"] = chunk["event1"].astype(str).str.strip()
@@ -202,16 +201,15 @@ def 评估_student_clash(sol, ev):
 
 
 def 评估_after_5pm(sol, ev):
-    # 这里只惩罚 whole class 在17:00开始的情况
-    # 因为你们的slot是9~17，17点开始已经属于 after 5pm
     whole_class_set = set(
         ev.loc[ev["whole_class"] == "TRUE", "event_id"].astype(str).tolist()
     )
 
-    bad = sol[
-        (sol["event_id"].isin(whole_class_set))
-        & (sol["assigned_start_hour"] >= 17)
-    ].copy()
+    tmp = sol[sol["event_id"].isin(whole_class_set)].copy()
+    tmp["end_hour"] = tmp["assigned_start_hour"] + tmp["L_slots"]
+
+    # 只要结束时间 > 17，就说明有一部分落在5pm之后
+    bad = tmp[tmp["end_hour"] > 17].copy()
 
     penalty = len(bad)
     return len(bad), penalty
@@ -221,11 +219,16 @@ def 评估_wednesday_afternoon_wholeclass(sol, ev):
         ev.loc[ev["whole_class"] == "TRUE", "event_id"].astype(str).tolist()
     )
 
-    bad = sol[
+    tmp = sol[
         (sol["event_id"].isin(whole_class_set))
         & (sol["assigned_day"] == "Wednesday")
-        & (sol["assigned_start_hour"] >= 13)
     ].copy()
+
+    tmp["end_hour"] = tmp["assigned_start_hour"] + tmp["L_slots"]
+
+    # 只要这门课在周三覆盖到13:00之后任何时间，就算违反
+    # 即 [start, end) 与 [13, +∞) 有交集  => end_hour > 13
+    bad = tmp[tmp["end_hour"] > 13].copy()
 
     penalty = len(bad)
     return len(bad), penalty
@@ -258,17 +261,8 @@ def 评估_same_room_across_weeks(sol):
     return count_bad_events, penalty
 
 
-def 评估_room_capacity(sol, ev, rm):
+def 评估_room_capacity(sol, rm):
     tmp = sol.copy()
-
-    # 如果 step2 里已经有 size，就直接用
-    # 没有的话，再从 events.xlsx 补
-    if "size" not in tmp.columns:
-        tmp = tmp.merge(
-            ev[["event_id", "size"]],
-            on="event_id",
-            how="left"
-        )
 
     # 合并 room capacity
     tmp = tmp.merge(
@@ -277,7 +271,7 @@ def 评估_room_capacity(sol, ev, rm):
         how="left"
     )
 
-    tmp["size"] = pd.to_numeric(tmp["size"], errors="coerce").fillna(0)
+    tmp["size"] = pd.to_numeric(tmp["size"], errors="coerce")
     tmp["cap"] = pd.to_numeric(tmp["cap"], errors="coerce")
 
     # 只看真正分了房间的
@@ -285,6 +279,7 @@ def 评估_room_capacity(sol, ev, rm):
         tmp["room_id"].notna()
         & (tmp["room_id"].astype(str).str.strip() != "")
         & tmp["cap"].notna()
+        & tmp["size"].notna()
         & (tmp["size"] > tmp["cap"])
     ].copy()
 
@@ -332,11 +327,13 @@ def 百分比(part, whole):
         return 0.0
     return 100.0 * part / whole
 
-def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv"):
+def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv",
+         events_xlsx="events.xlsx",
+         overlap_csv="event_overlap.csv"):
     print(">>> DEBUG: entering step3 main")
     sol = 读取并整理step2课表(step2_csv)
     rm = 读取room数据()
-    ev = 读取event数据()
+    ev = 读取event数据(events_xlsx)
 
     total_occurrences = len(sol)
 
@@ -371,7 +368,7 @@ def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv"):
     )
 
     # 1. student clash
-    clash_count, clash_penalty, total_overlap_pairs = 评估_student_clash(sol, ev)
+    clash_count, clash_penalty, total_overlap_pairs = 评估_student_clash(sol, ev, overlap_csv)
 
     # 2a. after 5pm
     evening_count, evening_penalty = 评估_after_5pm(sol, ev)
@@ -386,7 +383,7 @@ def main(step2_csv="step2_solution_with_rooms_by_week_baseline.csv"):
     same_room_bad_events, same_room_penalty = 评估_same_room_across_weeks(sol)
 
     # 5. room capacity violation
-    cap_bad_count, cap_penalty = 评估_room_capacity(sol, ev, rm)
+    cap_bad_count, cap_penalty = 评估_room_capacity(sol, rm)
 
     # 6. campus mismatch
     campus_bad_count, campus_penalty = 评估_expected_campus_mismatch(sol, ev)
