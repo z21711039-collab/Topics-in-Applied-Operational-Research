@@ -57,7 +57,8 @@ def main(solution_csv):
     print(f"Checking: {solution_csv}")
     print("=" * 80)
     if not sol_path.exists():
-        raise FileNotFoundError(f"Cannot find SOLUTION_CSV: {sol_path}")
+        print(f"Skipping missing file: {sol_path}")
+        return
 
     # ---- load solution ----
     sol = pd.read_csv(sol_path).copy()

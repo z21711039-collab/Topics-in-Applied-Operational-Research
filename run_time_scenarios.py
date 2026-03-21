@@ -109,22 +109,77 @@ def main():
         result_df = pd.DataFrame(all_results)[[
             "scenario",
             "objective",
+
+            # ===== counts =====
             "clash_count",
             "evening_count",
             "wed_count",
             "lunch_count",
+            "same_room_bad_events",
             "cap_bad_count",
             "campus_bad_count",
+
+            # ===== percentages =====
+            "clash_pct",
+            "evening_pct",
+            "wed_pct",
+            "lunch_pct",
+            "same_room_pct",
+            "cap_pct",
+            "campus_pct",
+
+            # ===== utilisation =====
+            "timeslot_utilisation",
+            "avg_events_per_used_timeslot",
+            "avg_room_utilisation",
+
+            # ===== peak =====
             "peak_day",
             "peak_hour",
             "peak_events",
-            "avg_room_utilisation",
         ]]
+        
+        
+        # ===== format columns for display / csv =====
+        pct_cols = [
+            "clash_pct",
+            "evening_pct",
+            "wed_pct",
+            "lunch_pct",
+            "same_room_pct",
+            "cap_pct",
+            "campus_pct",
+        ]
 
-        print("\n" + "=" * 100)
+        util_pct_cols = [
+            "timeslot_utilisation",
+            "avg_room_utilisation",
+        ]
+
+        # 先复制一份，避免把原数值表改坏
+        display_df = result_df.copy()
+
+        # objective 保留两位小数
+        display_df["objective"] = display_df["objective"].map(lambda x: f"{x:.2f}")
+
+        # 普通百分比列：本来就是 1.38 / 22.66 这种，直接加 %
+        for col in pct_cols:
+            display_df[col] = display_df[col].map(lambda x: f"{x:.2f}%")
+
+        # utilisation 列：本来是 1.0 / 0.55 这种，要先乘100再加 %
+        for col in util_pct_cols:
+            display_df[col] = display_df[col].map(lambda x: f"{x * 100:.2f}%")
+
+        # 其他保留两位小数
+        display_df["avg_events_per_used_timeslot"] = display_df["avg_events_per_used_timeslot"].map(lambda x: f"{x:.2f}")
+
+        print("\n" + "=" * 120)
         print("SCENARIO SUMMARY")
-        print("=" * 100)
-        print(result_df.to_string(index=False))
+        print("=" * 120)
+        print(display_df.to_string(index=False))
 
-        result_df.to_csv("scenario_summary.csv", index=False)
+        display_df.to_csv("scenario_summary.csv", index=False)
         print("\nSaved summary file: scenario_summary.csv")
+        
+if __name__ == "__main__":
+    main()

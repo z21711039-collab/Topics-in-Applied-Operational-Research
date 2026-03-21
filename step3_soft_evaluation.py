@@ -330,58 +330,66 @@ def 百分比(part, whole):
 
 
 def 计算_utilisation指标(sol, scenario):
-    # ===== 1) timeslot usage =====
-    ts_usage = sol.groupby(["assigned_day", "assigned_start_hour"]).size().reset_index(name="count")
-    peak = ts_usage.loc[ts_usage["count"].idxmax()]
-
-    used_timeslots = len(ts_usage)
-    avg_events_per_used_timeslot = ts_usage["count"].mean() if len(ts_usage) > 0 else 0
-
-    # scenario-specific available timeslots
-    if scenario == "mon_fri_9_5":
-        available_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-        available_hours = [9, 10, 11, 12, 13, 14, 15, 16]   # 9-5 => start at 9..16
-        total_available_timeslots = len(available_days) * len(available_hours)
-
-    elif scenario == "no_friday_afternoon":
-        # Mon-Thu: 9..17 ; Fri: 9..11
-        total_available_timeslots = 4 * 9 + 3   # 36 + 3 = 39
-
-    else:  # baseline
-        # Mon, Tue, Thu, Fri: 9..17 ; Wed: 9..17
-        # 这里先按你模型当前允许的统一 9..17 算，共45个
-        total_available_timeslots = 5 * 9
-
-    timeslot_utilisation = (
-        used_timeslots / total_available_timeslots
-        if total_available_timeslots > 0 else 0
-    )
-
-    # ===== 2) room usage =====
+    # 只看真正分了房间的 occurrence
     room_only = sol[
         sol["room_id"].notna() & (sol["room_id"].astype(str).str.strip() != "")
     ].copy()
 
+    # 总房间数
     total_rooms = room_only["room_id"].nunique()
 
-    room_usage = room_only.groupby(
-        ["assigned_day", "assigned_start_hour"]
-    )["room_id"].nunique().reset_index(name="rooms_used")
+    # 每个时间段用了多少个不同房间
+    ts_room_usage = (
+        room_only.groupby(["assigned_day", "assigned_start_hour"])["room_id"]
+        .nunique()
+        .reset_index(name="rooms_used")
+    )
 
-    room_usage["utilisation"] = room_usage["rooms_used"] / total_rooms if total_rooms > 0 else 0
-    avg_room_utilisation = room_usage["utilisation"].mean() if len(room_usage) > 0 else 0
+    # peak timeslot：仍然看该时间段一共有多少个 event
+    ts_event_usage = (
+        sol.groupby(["assigned_day", "assigned_start_hour"])
+        .size()
+        .reset_index(name="event_count")
+    )
+    peak = ts_event_usage.loc[ts_event_usage["event_count"].idxmax()]
+
+    # Timeslot utilisation（时间视角）
+    # = 每个时间段被占用的房间比例，再对所有时间段取平均
+    if total_rooms > 0 and len(ts_room_usage) > 0:
+        ts_room_usage["utilisation"] = ts_room_usage["rooms_used"] / total_rooms
+        timeslot_utilisation = ts_room_usage["utilisation"].mean()
+    else:
+        timeslot_utilisation = 0.0
+
+    # Room utilisation（空间视角）
+    # = 已占用的(room, timeslot) / 总(room, timeslot)
+    if scenario == "no_friday_afternoon":
+        total_timeslots = 4 * 9 + 3   # 39
+    else:
+        total_timeslots = 5 * 9       # 45
+
+    total_room_timeslots = total_rooms * total_timeslots
+    used_room_timeslots = ts_room_usage["rooms_used"].sum() if len(ts_room_usage) > 0 else 0
+
+    room_utilisation = (
+        used_room_timeslots / total_room_timeslots
+        if total_room_timeslots > 0 else 0.0
+    )
+
+    # 平均每个已使用时间段有多少门 event
+    avg_events_per_used_timeslot = (
+        ts_event_usage["event_count"].mean()
+        if len(ts_event_usage) > 0 else 0.0
+    )
 
     return {
         "peak_day": peak["assigned_day"],
         "peak_hour": int(peak["assigned_start_hour"]),
-        "peak_events": int(peak["count"]),
-        "used_timeslots": int(used_timeslots),
-        "total_available_timeslots": int(total_available_timeslots),
+        "peak_events": int(peak["event_count"]),
         "timeslot_utilisation": round(float(timeslot_utilisation), 2),
         "avg_events_per_used_timeslot": round(float(avg_events_per_used_timeslot), 2),
-        "avg_room_utilisation": round(float(avg_room_utilisation), 2),
+        "avg_room_utilisation": round(float(room_utilisation), 2),
     }
-    
     
     
     
