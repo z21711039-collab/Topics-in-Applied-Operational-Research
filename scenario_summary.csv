@@ -1,3 +1,0 @@
-scenario,objective,clash_count,evening_count,wed_count,lunch_count,same_room_bad_events,cap_bad_count,campus_bad_count,clash_pct,evening_pct,wed_pct,lunch_pct,same_room_pct,cap_pct,campus_pct,timeslot_utilisation,avg_events_per_used_timeslot,avg_room_utilisation,peak_day,peak_hour,peak_events
-baseline,75394008.00,44006,6971,7785,34667,12541,1889,55963,1.38%,11.50%,12.84%,22.66%,39.99%,1.30%,38.41%,55.00%,3400.22,55.00%,Monday,9,14995
-mon_fri_9_5,78675750.00,45037,0,6611,34371,12677,1823,56481,1.42%,0.00%,10.89%,22.45%,40.38%,1.25%,38.74%,54.00%,3402.51,54.00%,Monday,9,14981
